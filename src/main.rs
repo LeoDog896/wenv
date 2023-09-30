@@ -31,7 +31,7 @@ enum Commands {
     Path {
         #[command(subcommand)]
         command: Option<PathCommands>,
-    }
+    },
 }
 
 #[derive(Subcommand)]
@@ -41,7 +41,7 @@ enum PathCommands {
         /// Dry run
         #[arg(long)]
         dry_run: bool,
-    }
+    },
 }
 
 fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
@@ -162,12 +162,18 @@ fn main() -> Result<()> {
                     if problem_count > 0 {
                         println!(
                             "{}",
-                            format!("{} problems found (fix with {}{}", problem_count, "`wenv path fix`".purple(), ")".red()).red()
+                            format!(
+                                "{} problems found (fix with {}{}",
+                                problem_count,
+                                "`wenv path fix`".purple(),
+                                ")".red()
+                            )
+                            .red()
                         );
                     } else {
                         println!("{}", "0 problems found".green());
                     }
-                },
+                }
                 Some(PathCommands::Fix { dry_run }) => {
                     let hklm = RegKey::predef(HKEY_CURRENT_USER);
                     let cur_ver = hklm.open_subkey("Environment")?;
@@ -175,25 +181,45 @@ fn main() -> Result<()> {
 
                     let mut problem_count = 0;
                     let path = value.to_str().unwrap();
-                    let path = path.split(';').filter(|x| {
-                        let path = Path::new(x);
-                        if !path.exists() {
-                            problem_count += 1;
-                            return false;
-                        }
+                    let path = path
+                        .split(';')
+                        .filter(|x| {
+                            let path = Path::new(x);
+                            if !path.exists() {
+                                problem_count += 1;
+                                return false;
+                            }
 
-                        true
-                    }).collect::<Vec<_>>().join(";");
+                            true
+                        })
+                        .collect::<Vec<_>>()
+                        .join(";");
 
                     if dry_run {
                         println!("{}", path);
                     } else {
-                        cur_ver.set_value("Path", &path)?;
+                        if let Err(err) = cur_ver.set_value("Path", &path) {
+                            if err.raw_os_error() == Some(5) {
+                                println!(
+                                    "{}",
+                                    "Access denied - try running as an Administrator.".red()
+                                );
+                            } else {
+                                println!("{}", err);
+                            }
+                        }
+
+                        return Ok(());
                     }
 
                     println!(
                         "{}",
-                        format!("{} problems fixed - new Path size: {}", problem_count, path.len()).green()
+                        format!(
+                            "{} problems fixed - new Path size: {}",
+                            problem_count,
+                            path.len()
+                        )
+                        .green()
                     );
                 }
             }
