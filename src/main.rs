@@ -176,7 +176,7 @@ fn main() -> Result<()> {
                 }
                 Some(PathCommands::Fix { dry_run }) => {
                     let hklm = RegKey::predef(HKEY_CURRENT_USER);
-                    let cur_ver = hklm.open_subkey("Environment")?;
+                    let cur_ver = hklm.open_subkey_with_flags("Environment", KEY_ALL_ACCESS)?;
                     let value: OsString = cur_ver.get_value("Path").unwrap();
 
                     let mut problem_count = 0;
@@ -207,9 +207,9 @@ fn main() -> Result<()> {
                             } else {
                                 println!("{}", err);
                             }
+                            return Ok(());
                         }
 
-                        return Ok(());
                     }
 
                     println!(
