@@ -1,9 +1,11 @@
 use std::ffi::OsString;
 
-use winreg::RegValue;
+use anyhow::Result;
+use std::io::Write;
+use tabwriter::TabWriter;
 use winreg::enums::*;
 use winreg::RegKey;
-use anyhow::Result;
+use winreg::RegValue;
 
 use clap::{Parser, Subcommand};
 
@@ -24,20 +26,25 @@ enum Commands {
     },
 }
 
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let hklm = RegKey::predef(HKEY_CURRENT_USER);
     let cur_ver = hklm.open_subkey("Environment")?;
-    
+
+    let mut tw = TabWriter::new(vec![]);
+
     for (name, value) in cur_ver.enum_values().map(|x| x.unwrap()) {
         let value = match value.vtype {
             REG_SZ | REG_EXPAND_SZ => format!("{}", value),
-            _ => unimplemented!("unimplemented type: {:?}", value.vtype)
+            _ => unimplemented!("unimplemented type: {:?}", value.vtype),
         };
-        println!("{}: {}", name, value);
+        tw.write(format!("{}\t{}\n", name, value).as_bytes())?;
     }
+
+    tw.flush().unwrap();
+
+    println!("{}", String::from_utf8(tw.into_inner().unwrap()).unwrap());
 
     Ok(())
 }
