@@ -1,5 +1,11 @@
 [package]
 name = "wenv-cli"
+author = "LeoDog896 <leodog896@gmail.com>"
+description = "The Missing Windows Environment Variable Manager"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/LeoDog896/wenv"
+keywords = ["windows", "environment", "manager", "cli", "env"]
+categories = ["command-line-utilities"]
 version = "0.1.0"
 edition = "2021"
 

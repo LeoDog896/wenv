@@ -44,7 +44,7 @@ enum PathCommands {
     },
 }
 
-fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
+fn pretty_registry(hklm: &RegKey, subkey: &str) -> Result<()> {
     let cur_ver = hklm.open_subkey(subkey)?;
 
     if let Some((w, _)) = term_size::dimensions() {
@@ -52,14 +52,14 @@ fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
 
         let longest_name_length = cur_ver
             .enum_values()
-            .map(|x| x.unwrap())
+            .map(Result::unwrap)
             .map(|(name, _)| name.len())
             .max()
             .unwrap();
 
-        for (name, value) in cur_ver.enum_values().map(|x| x.unwrap()) {
+        for (name, value) in cur_ver.enum_values().map(Result::unwrap) {
             let value = match value.vtype {
-                REG_SZ | REG_EXPAND_SZ => format!("{}", value),
+                REG_SZ | REG_EXPAND_SZ => format!("{value}"),
                 _ => unimplemented!("unimplemented type: {:?}", value.vtype),
             };
             tw.write_all(
@@ -74,7 +74,7 @@ fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
                             if name == "path" {
                                 "`wenv path`".purple().to_string()
                             } else {
-                                format!("`wenv show {}`", name).purple().to_string()
+                                format!("`wenv show {name}`").purple().to_string()
                             },
                             ")".red()
                         )
@@ -96,11 +96,11 @@ fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
     Ok(())
 }
 
-fn registry(hklm: RegKey, subkey: &str) -> Result<()> {
+fn registry(hklm: &RegKey, subkey: &str) -> Result<()> {
     let cur_ver = hklm.open_subkey(subkey)?;
 
-    for (name, value) in cur_ver.enum_values().map(|x| x.unwrap()) {
-        println!("{}: {}", name, value);
+    for (name, value) in cur_ver.enum_values().map(Result::unwrap) {
+        println!("{name}: {value}");
     }
 
     Ok(())
@@ -115,9 +115,9 @@ fn main() -> Result<()> {
             let hklm = RegKey::predef(HKEY_CURRENT_USER);
 
             if is_tty {
-                pretty_registry(hklm, "Environment")?;
+                pretty_registry(&hklm, "Environment")?;
             } else {
-                registry(hklm, "Environment")?;
+                registry(&hklm, "Environment")?;
             }
         }
         Some(Commands::Show { paths }) => {
@@ -131,7 +131,7 @@ fn main() -> Result<()> {
 
             for (key, value) in values {
                 println!("{}", key.to_str().unwrap().blue());
-                println!("{:?}", value);
+                println!("{value:?}");
             }
         }
         Some(Commands::Path { command }) => {
@@ -196,27 +196,23 @@ fn main() -> Result<()> {
                         .join(";");
 
                     if dry_run {
-                        println!("{}", path);
-                    } else {
-                        if let Err(err) = cur_ver.set_value("Path", &path) {
-                            if err.raw_os_error() == Some(5) {
-                                println!(
-                                    "{}",
-                                    "Access denied - try running as an Administrator.".red()
-                                );
-                            } else {
-                                println!("{}", err);
-                            }
-                            return Ok(());
+                        println!("{path}");
+                    } else if let Err(err) = cur_ver.set_value("Path", &path) {
+                        if err.raw_os_error() == Some(5) {
+                            println!(
+                                "{}",
+                                "Access denied - try running as an Administrator.".red()
+                            );
+                        } else {
+                            println!("{err}");
                         }
-
+                        return Ok(());
                     }
 
                     println!(
                         "{}",
                         format!(
-                            "{} problems fixed - new Path size: {}",
-                            problem_count,
+                            "{problem_count} problems fixed - new Path size: {}",
                             path.len()
                         )
                         .green()
