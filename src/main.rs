@@ -27,6 +27,21 @@ enum Commands {
         /// Specific envs(s) to list out
         paths: Vec<OsString>,
     },
+    /// Path utilities
+    Path {
+        #[command(subcommand)]
+        command: Option<PathCommands>,
+    }
+}
+
+#[derive(Subcommand)]
+enum PathCommands {
+    /// Fix path
+    Fix {
+        /// Dry run
+        #[arg(long)]
+        dry_run: bool,
+    }
 }
 
 fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
@@ -47,7 +62,7 @@ fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
                 REG_SZ | REG_EXPAND_SZ => format!("{}", value),
                 _ => unimplemented!("unimplemented type: {:?}", value.vtype),
             };
-            tw.write(
+            tw.write_all(
                 format!(
                     "{}\t{}\n",
                     name.blue(),
@@ -56,7 +71,11 @@ fn pretty_registry(hklm: RegKey, subkey: &str) -> Result<()> {
                             "({}>{} characters - run {}{}",
                             value.len(),
                             w - longest_name_length - 2,
-                            format!("`wenv show {}`", name).purple(),
+                            if name == "path" {
+                                "`wenv path`".purple().to_string()
+                            } else {
+                                format!("`wenv show {}`", name).purple().to_string()
+                            },
                             ")".red()
                         )
                         .red()
@@ -111,36 +130,72 @@ fn main() -> Result<()> {
                 .collect::<Vec<_>>();
 
             for (key, value) in values {
-                let key = key.to_str().unwrap();
-                println!("{}", key.blue());
+                println!("{}", key.to_str().unwrap().blue());
+                println!("{:?}", value);
+            }
+        }
+        Some(Commands::Path { command }) => {
+            match command {
+                None => {
+                    let hklm = RegKey::predef(HKEY_CURRENT_USER);
+                    let cur_ver = hklm.open_subkey("Environment")?;
+                    let value: OsString = cur_ver.get_value("Path").unwrap();
 
-                if key == "Path" {
                     let mut problem_count = 0;
                     let path = value.to_str().unwrap();
-                    let path = path.split(";").collect::<Vec<_>>();
+                    let path = path.split(';').collect::<Vec<_>>();
                     for path_str in path {
                         let path = Path::new(path_str);
 
                         // check if path exists
                         if !path.exists() {
-                            println!("{}", format!("  {} {}", path_str, "(does not exist)").red());
+                            println!("{}", format!("{} {}", path_str, "(does not exist)").red());
                             problem_count += 1;
                             continue;
                         }
 
-                        println!("  {}", path.to_str().unwrap());
+                        println!("{}", path.to_str().unwrap());
                     }
 
+                    println!();
+
                     if problem_count > 0 {
-                        println!("{}", format!("{} problems found", problem_count).red());
+                        println!(
+                            "{}",
+                            format!("{} problems found (fix with {}{}", problem_count, "`wenv path fix`".purple(), ")".red()).red()
+                        );
                     } else {
                         println!("{}", "0 problems found".green());
                     }
+                },
+                Some(PathCommands::Fix { dry_run }) => {
+                    let hklm = RegKey::predef(HKEY_CURRENT_USER);
+                    let cur_ver = hklm.open_subkey("Environment")?;
+                    let value: OsString = cur_ver.get_value("Path").unwrap();
 
-                    continue;
+                    let mut problem_count = 0;
+                    let path = value.to_str().unwrap();
+                    let path = path.split(';').filter(|x| {
+                        let path = Path::new(x);
+                        if !path.exists() {
+                            problem_count += 1;
+                            return false;
+                        }
+
+                        true
+                    }).collect::<Vec<_>>().join(";");
+
+                    if dry_run {
+                        println!("{}", path);
+                    } else {
+                        cur_ver.set_value("Path", &path)?;
+                    }
+
+                    println!(
+                        "{}",
+                        format!("{} problems fixed - new Path size: {}", problem_count, path.len()).green()
+                    );
                 }
-
-                println!("{:?}", value);
             }
         }
     }
